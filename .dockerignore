@@ -1,0 +1,11 @@
+.git
+.gitmodules
+.env
+.idea
+.vscode
+**/.git
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/coverage
