@@ -1,0 +1,16 @@
+[submodule "services/user"]
+	path = services/user
+	url = https://github.com/CarlosSV923/VaultHistory.Microservice.User.git
+	branch = develop
+[submodule "services/jobs"]
+	path = services/jobs
+	url = https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs.git
+	branch = develop
+[submodule "services/history"]
+	path = services/history
+	url = https://github.com/CarlosSV923/VaultHistory.Microservice.History.git
+	branch = develop
+[submodule "services/notification"]
+	path = services/notification
+	url = https://github.com/CarlosSV923/VaultHistory.Microservice.Notification.git
+	branch = develop

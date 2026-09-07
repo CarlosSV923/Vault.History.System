@@ -1,0 +1,189 @@
+name: vault-history-system
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d app_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: vault_history
+      MONGO_INITDB_ROOT_PASSWORD: vault_history_password
+      MONGO_INITDB_DATABASE: vault_history_local
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok", "-u", "vault_history", "-p", "vault_history_password", "--authenticationDatabase", "admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:4.0.2
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "9094:9094"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 20s
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:4.0.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        for topic in notify-history-topic notify-outbox-topic update-users-topic update-outbox-topic; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$topic" --partitions 1 --replication-factor 1
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  user:
+    build:
+      context: ./services/user
+      dockerfile: ../../docker/user.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Local
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=app_db;Username=admin;Password=admin123
+      Jwt__PrivateKey: ${JWT_PRIVATE_KEY:-Local-Only-Vault-History-Key-Change-Before-Deployment-2026}
+      Jwt__Issuer: VaultHistory.User.Api
+      Jwt__Audience: VaultHistory.User.Clients
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  history:
+    build:
+      context: ./services/history
+      dockerfile: ../../docker/history.Dockerfile
+    environment:
+      NODE_ENV: docker
+      PORT: 3000
+      MONGO_URI: mongodb://vault_history:vault_history_password@mongodb:27017/vault_history_local?authSource=admin
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-not-configured-for-startup-only}
+      JWT_SECRET: ${JWT_PRIVATE_KEY:-Local-Only-Vault-History-Key-Change-Before-Deployment-2026}
+      JWT_ISSUER: VaultHistory.User.Api
+      JWT_AUDIENCE: VaultHistory.User.Clients
+      AUTH_TOKEN_JOB: ${HISTORY_AUTH_TOKEN:-local-history-job-token}
+      SWAGGER_ENABLE: "true"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "const net=require('net');const s=net.connect(3000,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  jobs:
+    build:
+      context: ./services/jobs
+      dockerfile: ../../docker/jobs.Dockerfile
+    environment:
+      NODE_ENV: docker
+      PORT: 3000
+      DATABASE_URL: postgresql://admin:admin123@postgres:5432/app_db?schema=public
+      OUTBOX_QUERY_LIMIT: 30
+      USER_QUERY_LIMIT: 30
+      NOTIFY_OUTBOX_CRON_EXPRESSION: "0 */3 * * * *"
+      NOTIFY_USER_CRON_EXPRESSION: "0 */3 * * * *"
+      PROCESS_OUTBOX_CRON_EXPRESSION: "0 */3 * * * *"
+      KAFKA_BROKER: kafka:9092
+      KAFKA_NOTIFY_OUTBOX_TOPIC: notify-outbox-topic
+      KAFKA_NOTIFY_HISTORY_TOPIC: notify-history-topic
+      KAFKA_UPDATE_USERS_TOPIC: update-users-topic
+      KAFKA_UPDATE_OUTBOX_TOPIC: update-outbox-topic
+      KAFKA_CLIENT_ID: vault-history-microservice-jobs
+      KAFKA_GROUP_ID: vault-history-microservice-jobs-group
+    depends_on:
+      user:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  notification:
+    build:
+      context: ./services/notification
+      dockerfile: ../../docker/notification.Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: Local
+      Kafka__BootstrapServers: kafka:9092
+      History__BaseUrl: http://history:3000
+      History__AuthorizationToken: ${HISTORY_AUTH_TOKEN:-local-history-job-token}
+      Gmail__SenderAddress: ${GMAIL_SENDER_ADDRESS:-vault.history.portfolio@gmail.com}
+      Gmail__SenderName: ${GMAIL_SENDER_NAME:-Vault History Portfolio}
+      Gmail__ClientId: ${GMAIL_CLIENT_ID:-not-configured-for-startup-only}
+      Gmail__ClientSecret: ${GMAIL_CLIENT_SECRET:-not-configured-for-startup-only}
+      Gmail__RefreshToken: ${GMAIL_REFRESH_TOKEN:-not-configured-for-startup-only}
+    depends_on:
+      history:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+networks:
+  default:
+    name: vault-history-system
+
+volumes:
+  postgres-data:
+  mongo-data:
+  kafka-data:
