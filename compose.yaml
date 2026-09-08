@@ -165,6 +165,7 @@ services:
     environment:
       DOTNET_ENVIRONMENT: Local
       Kafka__BootstrapServers: kafka:9092
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=app_db;Username=admin;Password=admin123
       History__BaseUrl: http://history:3000
       History__AuthorizationToken: ${HISTORY_AUTH_TOKEN:-local-history-job-token}
       Gmail__SenderAddress: ${GMAIL_SENDER_ADDRESS:-vault.history.portfolio@gmail.com}
