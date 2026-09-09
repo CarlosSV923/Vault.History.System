@@ -10,6 +10,8 @@ The monorepo runs the complete local backend through Docker Compose: User, Jobs,
 
 The Compose environment creates `notify-history-topic`, `notify-outbox-topic`, `update-users-topic` and `update-outbox-topic`. Google configuration values are placeholders until a real story or email flow is tested. See the [GitHub Project](https://github.com/users/CarlosSV923/projects/3) for planning.
 
+History also exposes anonymous generation behind the fixed `AUTH_TOKEN_FORNT` token. `ANONYMOUS_DAILY_LIMIT` defaults to `3`; the service uses the IP sent in the request body as its UTC daily quota key and does not retain that IP in generated history records.
+
 PostgreSQL also holds Notification checkpoints, while User continues to apply the EF Core migration that creates the shared table. This lets history-message retries reuse a generated story and a confirmed email stage before republishing the Kafka result.
 
 Registration follows the outbox flow as well: User stores a pending `CreateUserEvent` with an explicit `userId`, Jobs publishes the correlated message to `notify-outbox-topic`, and Notification delivers the welcome template before publishing the matching `{ id: outboxId, data: ... }` result to `update-outbox-topic`.

@@ -57,7 +57,7 @@ Para actualizar una revisión de servicio en el futuro, cambia el submódulo a u
 
 ## Configuración
 
-El Compose incluye valores locales para PostgreSQL, MongoDB, JWT y el token interno entre Notification e History. Son exclusivos para desarrollo y no deben reutilizarse en un despliegue público.
+El Compose incluye valores locales para PostgreSQL, MongoDB, JWT, el token interno entre Notification e History y el token fijo del frontend para la generación anónima. `AUTH_TOKEN_FORNT` protege esa ruta y `ANONYMOUS_DAILY_LIMIT` establece su cupo diario por IP declarada, con valor local predeterminado de `3`. Son exclusivos para desarrollo y no deben reutilizarse en un despliegue público.
 
 Para arrancar los contenedores no hacen falta credenciales reales de Google. Los valores placeholder permiten construir e iniciar History y Notification; Gemini y Gmail solo se invocan cuando se procesa una notificación real.
 
