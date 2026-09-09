@@ -36,6 +36,25 @@ git submodule update --init --recursive
 
 Los submódulos siguen la rama `develop`, pero cada commit del repositorio de orquestación fija una revisión concreta para que el entorno sea reproducible.
 
+## Flujo de bienvenida
+
+Al registrarse un usuario, User guarda un `CreateUserEvent` pendiente en el outbox con el payload explícito `{ "userId": "..." }`. Jobs conserva el `outboxId`, obtiene el perfil y publica la solicitud en `notify-outbox-topic`. Notification reutiliza la plantilla de bienvenida y publica el resultado correlacionado como `{ id: outboxId, data: ... }` en `update-outbox-topic`; solo entonces Jobs actualiza el estado final del outbox.
+
+Los registros de alta pendientes con el formato anterior (`UserId.Value`) siguen siendo compatibles. Los ya procesados no se vuelven a enviar. Los inicios de sesión mantienen el mismo recorrido y su plantilla específica.
+
+## Verificar revisiones fijadas
+
+Antes de construir el conjunto, inicializa exactamente los commits referenciados por este repositorio y comprueba que no haya cambios locales en los submódulos:
+
+```bash
+git submodule update --init --recursive
+git submodule status
+git diff --submodule=log
+docker compose config -q
+```
+
+Para actualizar una revisión de servicio en el futuro, cambia el submódulo a un commit ya validado, ejecuta las pruebas del servicio y del Compose, y confirma el puntero actualizado junto con la salida de `git diff --submodule=log`.
+
 ## Configuración
 
 El Compose incluye valores locales para PostgreSQL, MongoDB, JWT y el token interno entre Notification e History. Son exclusivos para desarrollo y no deben reutilizarse en un despliegue público.
