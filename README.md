@@ -1,122 +1,123 @@
 # Vault History System
 
-English documentation: [docs/overview.md](docs/overview.md).
+Vault History System is the integration and architecture repository for the Vault History portfolio backend. It documents how the independently maintained services, data stores, message broker, and external providers fit together.
 
-Repositorio de orquestación para levantar el sistema completo de Vault History con Docker Compose. Los microservicios se conservan en repositorios independientes y se incluyen aquí como submódulos fijados a revisiones conocidas.
+This repository deliberately contains **no service source code, submodules, or `services/` directory**. The service repositories are connected only through the links in this document. That separation keeps ownership, tests, releases, and source history with each service.
 
-## Repositorios
+## Architecture
 
-| Componente | Repositorio | Función |
+![Vault History backend architecture showing the User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, Gemini, and Gmail relationships.](docs/architecture/backend-architecture.png)
+
+The diagram is a static export of the versioned architecture source. Explore the [interactive diagram](docs/architecture/backend-architecture.html) or inspect its [editable JSON source](docs/architecture/backend-architecture.json) for labels, relationships, and focused views.
+
+The backend topology is:
+
+1. The portfolio client calls **User** over HTTPS for accounts and authentication.
+2. **User** stores account and outbox data in **PostgreSQL**. **History** stores generated stories in **MongoDB** and asks **Google Gemini** to generate a story only when requested.
+3. **Jobs** publishes notification work to **Apache Kafka**. **Notification** consumes that work, obtains subscription stories from History when needed, sends email through the **Gmail API**, and publishes correlated outcomes.
+
+| Component | Responsibility | Primary integration |
 | --- | --- | --- |
-| User | [VaultHistory.Microservice.User](https://github.com/CarlosSV923/VaultHistory.Microservice.User) | Usuarios, autenticación, PostgreSQL y outbox. |
-| Jobs | [VaultHistory.Microservice.Jobs](https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs) | Tareas programadas y coordinación mediante Kafka. |
-| History | [VaultHistory.Microservice.History](https://github.com/CarlosSV923/VaultHistory.Microservice.History) | Generación y persistencia de historias. |
-| Notification | [VaultHistory.Microservice.Notification](https://github.com/CarlosSV923/VaultHistory.Microservice.Notification) | Consumo Kafka, plantillas y envío de correo. |
+| User | Accounts, authentication, preferences, and transactional outbox | PostgreSQL and Kafka-oriented outbox processing |
+| History | Story generation and persistence | MongoDB and Google Gemini |
+| Jobs | Scheduled selection, outbox processing, and result coordination | PostgreSQL and Apache Kafka |
+| Notification | Template rendering and email delivery | Apache Kafka, History, PostgreSQL checkpoints, and Gmail |
+| PostgreSQL | User, outbox, and notification-checkpoint data | User owns the EF Core migration for the shared checkpoint table |
+| MongoDB | Generated-story data | History |
+| Apache Kafka | Asynchronous notification contracts | Jobs and Notification |
 
-Las historias de usuario y su estado se administran en [Portfolio Vault History System](https://github.com/users/CarlosSV923/projects/3). La HU-12 que introdujo este repositorio se encuentra en [Vault.History.System#1](https://github.com/CarlosSV923/Vault.History.System/issues/1).
+The frontend is not part of this repository or its Compose topology.
 
-## Requisitos
+## Service repositories
 
-- Git con soporte para submódulos.
-- Docker Desktop con Docker Compose.
-- Aproximadamente 6 GB de memoria disponible para construir y ejecutar el entorno.
+Clone, build, test, and release each service in its own repository. This is the only source-level connection from this repository to those projects.
 
-## Clonar
+| Service | Repository |
+| --- | --- |
+| User | [CarlosSV923/VaultHistory.Microservice.User](https://github.com/CarlosSV923/VaultHistory.Microservice.User) |
+| Jobs | [CarlosSV923/VaultHistory.Microservice.Jobs](https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs) |
+| History | [CarlosSV923/VaultHistory.Microservice.History](https://github.com/CarlosSV923/VaultHistory.Microservice.History) |
+| Notification | [CarlosSV923/VaultHistory.Microservice.Notification](https://github.com/CarlosSV923/VaultHistory.Microservice.Notification) |
 
-```bash
-git clone --recurse-submodules https://github.com/CarlosSV923/Vault.History.System.git
-cd Vault.History.System
-```
+Work is planned in the [Portfolio Vault History System GitHub Project](https://github.com/users/CarlosSV923/projects/3). The original orchestration task is [HU-12](https://github.com/CarlosSV923/Vault.History.System/issues/1); its follow-up improvements remain tracked in [HU-26](https://github.com/CarlosSV923/Vault.History.System/issues/12).
 
-Si el repositorio ya fue clonado:
+## Compose topology and current limitation
 
-```bash
-git submodule update --init --recursive
-```
+`compose.yaml` and the Dockerfiles preserve the documented backend topology: User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, and the idempotent `kafka-init` topic initializer. Docker service names provide internal DNS; the workers use `kafka:9092`, and Notification reaches History at `http://history:3000`.
 
-Los submódulos siguen la rama `develop`, pero cada commit del repositorio de orquestación fija una revisión concreta para que el entorno sea reproducible.
+Because this repository no longer vendors service source trees, a clean checkout does **not** contain the build contexts referenced by `compose.yaml`. Consequently, `docker compose up --build` is not a runnable full-stack command from this repository alone. Do not mistake the retained Compose configuration for a production-validated deployment. Restoring a reproducible, runnable orchestration without reintroducing service source directories is an explicit future integration decision, not part of this documentation change.
 
-## Flujo de bienvenida
-
-Al registrarse un usuario, User guarda un `CreateUserEvent` pendiente en el outbox con el payload explícito `{ "userId": "..." }`. Jobs conserva el `outboxId`, obtiene el perfil y publica la solicitud en `notify-outbox-topic`. Notification reutiliza la plantilla de bienvenida y publica el resultado correlacionado como `{ id: outboxId, data: ... }` en `update-outbox-topic`; solo entonces Jobs actualiza el estado final del outbox.
-
-Los registros de alta pendientes con el formato anterior (`UserId.Value`) siguen siendo compatibles. Los ya procesados no se vuelven a enviar. Los inicios de sesión mantienen el mismo recorrido y su plantilla específica.
-
-## Verificar revisiones fijadas
-
-Antes de construir el conjunto, inicializa exactamente los commits referenciados por este repositorio y comprueba que no haya cambios locales en los submódulos:
+You can still inspect the resolved configuration without starting containers:
 
 ```bash
-git submodule update --init --recursive
-git submodule status
-git diff --submodule=log
-docker compose config -q
+docker compose config --quiet
 ```
 
-Para actualizar una revisión de servicio en el futuro, cambia el submódulo a un commit ya validado, ejecuta las pruebas del servicio y del Compose, y confirma el puntero actualizado junto con la salida de `git diff --submodule=log`.
+If you have a separately prepared local integration workspace, the retained operational commands are:
 
-## Configuración
+```bash
+docker compose ps
+docker compose logs --tail 100 user history jobs notification kafka-init
+docker compose down
+```
 
-El Compose incluye valores locales para PostgreSQL, MongoDB, JWT, el token interno entre Notification e History y el token fijo del frontend para la generación anónima. `AUTH_TOKEN_FORNT` protege esa ruta y `ANONYMOUS_DAILY_LIMIT` establece su cupo diario por IP declarada, con valor local predeterminado de `3`. Son exclusivos para desarrollo y no deben reutilizarse en un despliegue público.
+Do not run `docker compose down --volumes` unless you intentionally want to remove local PostgreSQL, MongoDB, and Kafka data.
 
-Para arrancar los contenedores no hacen falta credenciales reales de Google. Los valores placeholder permiten construir e iniciar History y Notification; Gemini y Gmail solo se invocan cuando se procesa una notificación real.
+## Configuration
 
-Para probar esos proveedores, copia `.env.example` como `.env` y reemplaza los valores correspondientes:
+Copy the example file only in an integration workspace that supplies compatible service build contexts:
 
 ```bash
 cp .env.example .env
 ```
 
-Docker Compose carga `.env` automáticamente. El archivo está ignorado por Git.
+The example declares local-only values for PostgreSQL, MongoDB, JWT signing, the internal History token, and anonymous-generation settings. `AUTH_TOKEN_FORNT` is the existing History configuration key; `ANONYMOUS_DAILY_LIMIT` defaults to `3`.
 
-## Ejecutar
+Google settings are placeholders so containers can start before a real story or email is processed. Set `GOOGLE_API_KEY` only for Gemini-backed generation, and set the Gmail client, sender, and refresh-token variables only for real delivery. Keep `.env` out of Git and never publish `docker compose config` output created with real secrets, because Compose expands them.
 
-Construir y levantar todo el sistema:
+## Messaging and state
 
-```bash
-docker compose up --build -d
-```
-
-Consultar el estado:
-
-```bash
-docker compose ps
-docker compose logs --tail 100 user history jobs notification kafka-init
-```
-
-Servicios accesibles desde el host:
-
-- User API: `http://localhost:5000`
-- Health de User: `http://localhost:5000/health`
-- History API: `http://localhost:3001`
-- Kafka: `localhost:9094`
-- PostgreSQL: `localhost:5432`
-- MongoDB: `localhost:27017`
-
-Jobs y Notification son workers y no publican puertos HTTP. Dentro de la red Docker, Notification usa `http://history:3000` y los workers usan `kafka:9092`.
-
-Detener el entorno:
-
-```bash
-docker compose down
-```
-
-Eliminar también los datos locales:
-
-```bash
-docker compose down --volumes
-```
-
-## Topics Kafka
-
-`kafka-init` crea de forma idempotente los siguientes topics antes de iniciar Jobs y Notification:
+`kafka-init` creates these topics before Jobs and Notification start:
 
 - `notify-history-topic`
 - `notify-outbox-topic`
 - `update-users-topic`
 - `update-outbox-topic`
 
-## Estructura
+For registration, User records a `CreateUserEvent` in its outbox, Jobs publishes correlated work to `notify-outbox-topic`, and Notification publishes the matching `{ id: outboxId, data: ... }` outcome to `update-outbox-topic` only after delivery processing. The existing legacy `UserId.Value` payload remains compatible. Sign-in notifications follow the same correlated outbox path with their specific template.
+
+PostgreSQL notification checkpoints allow History-message retries to reuse a generated story and a confirmed-email stage before a Kafka result is republished. The documented design is at-least-once around external email delivery; it does not claim an end-to-end exactly-once guarantee.
+
+Anonymous generation is configured through History's fixed frontend token and daily limit. The quota behavior that relies on an IP supplied in the request body is documented as the currently integrated service behavior; the hardened visitor-attribution work is tracked separately and must not be inferred from this repository.
+
+## Local ports and diagnostics
+
+When the Compose stack is supplied with valid service sources, these host ports are configured:
+
+| Service | Address |
+| --- | --- |
+| User API | `http://localhost:5000` |
+| User health check | `http://localhost:5000/health` |
+| History API | `http://localhost:3001` |
+| Kafka | `localhost:9094` |
+| PostgreSQL | `localhost:5432` |
+| MongoDB | `localhost:27017` |
+
+Jobs and Notification are workers and do not expose HTTP ports. If a worker restarts, inspect Kafka and the resolved configuration first:
+
+```bash
+docker compose logs kafka kafka-init jobs notification
+docker compose config
+```
+
+If User fails while applying migrations, inspect PostgreSQL before restarting User and Jobs:
+
+```bash
+docker compose logs postgres user
+docker compose restart user jobs
+```
+
+## Repository layout
 
 ```text
 Vault.History.System/
@@ -126,30 +127,18 @@ Vault.History.System/
 │   ├── jobs.Dockerfile
 │   ├── history.Dockerfile
 │   └── notification.Dockerfile
-└── services/
-    ├── user/
-    ├── jobs/
-    ├── history/
-    └── notification/
+├── docs/
+│   └── architecture/
+│       ├── backend-architecture.png
+│       ├── backend-architecture.html
+│       └── backend-architecture.json
+└── .env.example
 ```
 
-Los Dockerfiles y la topología conjunta pertenecen a este repositorio. Cada repositorio de microservicio conserva su compilación, pruebas y documentación específica.
+There is no `services/` directory and no Git submodule configuration. The Dockerfiles and Compose file belong to this orchestration repository; service implementation, tests, and specialized documentation remain in the linked repositories.
 
-## Diagnóstico
+## Verification and scope
 
-Si un worker reinicia, revisa primero los logs de Kafka y la configuración resuelta:
+This repository has no application test suite. For this documentation, verify relative links against the files above, run `docker compose config --quiet` only as configuration validation, and visually inspect the rendered README and architecture image on GitHub.
 
-```bash
-docker compose logs kafka kafka-init jobs notification
-docker compose config
-```
-
-Si User falla durante migraciones, verifica PostgreSQL y luego reinicia User y Jobs:
-
-```bash
-docker compose logs postgres user
-docker compose restart user jobs
-```
-
-No publiques la salida de `docker compose config` cuando uses un `.env` con credenciales reales, porque los secretos aparecerán expandidos.
-Docker orchestration for the Vault History portfolio system
+This documentation does not change application behavior, service contracts, secrets, Docker infrastructure, provider credentials, or functional validation. In particular, it does not close HU-26, replace the independent HU-20 functional validation, or present pending work as implemented.
