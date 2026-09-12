@@ -4,9 +4,9 @@ Vault History System is a local portfolio workspace for Vault History. This repo
 
 ## Architecture
 
-![Vault History backend architecture showing the Frontend, User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, Gemini, and Gmail relationships.](https://raw.githubusercontent.com/CarlosSV923/Vault.History.System/develop/docs/architecture/backend-architecture.png)
+![Simplified Vault History architecture showing reader requests, local backend services, stores, Kafka delivery work, Gemini, and Gmail.](https://raw.githubusercontent.com/CarlosSV923/Vault.History.System/develop/docs/architecture/backend-architecture.png)
 
-The image uses GitHub's raw-content URL so that it renders reliably in the repository README. Explore the [interactive diagram](docs/architecture/backend-architecture.html) or inspect its [editable JSON source](docs/architecture/backend-architecture.json) for labels, relationships, and focused views.
+The image uses GitHub's raw-content URL so that it renders reliably in the repository README. It is generated from the Compose-backed architecture specification. Explore the [interactive diagram](docs/architecture/backend-architecture.html) or inspect its [editable Archify JSON source](docs/architecture/backend-architecture.archify.json) for labels, relationships, and focused views.
 
 The backend topology is:
 
@@ -196,6 +196,18 @@ The following local screenshots show the visitor landing page, anonymous story g
 The example configuration declares local-only values for PostgreSQL, MongoDB, JWT signing, the internal History token, and anonymous-generation settings. `AUTH_TOKEN_FORNT` is the existing History configuration key; `ANONYMOUS_DAILY_LIMIT` defaults to `3`.
 
 Google settings are placeholders so containers can start before a real story or email is processed. Set `GOOGLE_API_KEY` only for Gemini-backed generation, and set the Gmail client, sender, and refresh-token variables only for real delivery. Keep `.env` out of Git and never publish `docker compose config` output created with real secrets, because Compose expands them.
+
+### Keep shared local settings aligned
+
+The root `.env` is the editable source for the containers started by Compose. If you run a sibling repository outside Compose, mirror its integration values in that repository's local configuration; otherwise the services may start but reject each other's requests.
+
+| Root `.env` variable | Matching local configuration | Rule |
+| --- | --- | --- |
+| `AUTH_TOKEN_FORNT` | History `AUTH_TOKEN_FORNT` and Frontend `HISTORY_FRONTEND_TOKEN` | All three values must be identical. The spelling `FORNT` is an existing History configuration key and must not be renamed. |
+| `HISTORY_AUTH_TOKEN` | History `AUTH_TOKEN_JOB` and Notification `History__AuthorizationToken` | Keep the same value for the protected Notification-to-History subscription call. |
+| `JWT_PRIVATE_KEY` | User `Jwt__PrivateKey` and History `JWT_SECRET` | Keep the signing and validation secrets aligned; keep the configured issuer and audience aligned as well. |
+
+The URL values use different addresses by design: the standalone Frontend uses `http://localhost:5000` and `http://localhost:3001`, while containers use service DNS such as `http://history:3000`. Change only the address appropriate to the process that makes the call.
 
 ## Messaging and state
 

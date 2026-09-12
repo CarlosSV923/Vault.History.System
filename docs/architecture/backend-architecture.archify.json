@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Vault History System",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "backend-architecture.html",
+    "repository": {
+      "url": "https://github.com/CarlosSV923/Vault.History.System",
+      "provider": "github",
+      "revision": "a16682f56b4df7dea92513fba6d2a0854f76733e"
+    },
+    "views": [
+      {
+        "id": "reader-requests",
+        "label": "Reader requests",
+        "focus": ["reader", "frontend", "user", "history", "postgres", "mongodb"],
+        "note": "The Frontend makes server-side calls to the User and History APIs."
+      },
+      {
+        "id": "delivery-workflow",
+        "label": "Delivery workflow",
+        "focus": ["jobs", "kafka", "notification", "gmail"],
+        "note": "Jobs creates notification work and Notification delivers the resulting email."
+      }
+    ]
+  },
+  "components": [
+    { "id": "reader", "type": "external", "label": "Portfolio reader", "sublabel": "Browser", "pos": [20, 320], "size": [150, 64] },
+    { "id": "frontend", "type": "frontend", "label": "Frontend Museum", "sublabel": "Next.js :3000", "pos": [200, 320], "size": [170, 64] },
+    { "id": "user", "type": "backend", "label": "User service", "sublabel": "HTTP :5000", "pos": [420, 120], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 83, "label": "Compose service" }] },
+    { "id": "history", "type": "backend", "label": "History service", "sublabel": "HTTP :3001", "pos": [420, 320], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 107, "label": "Compose service" }] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Accounts and outbox", "pos": [620, 120], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 4, "label": "Compose database" }] },
+    { "id": "mongodb", "type": "database", "label": "MongoDB", "sublabel": "Generated stories", "pos": [620, 320], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 21, "label": "Compose database" }] },
+    { "id": "gemini", "type": "external", "label": "Gemini", "sublabel": "Story generation", "pos": [420, 520], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 113, "label": "History configuration" }] },
+    { "id": "jobs", "type": "backend", "label": "Jobs service", "sublabel": "Scheduled worker", "pos": [788, 120], "size": [160, 64], "sources": [{ "path": "compose.yaml", "line": 136, "label": "Compose service" }] },
+    { "id": "kafka", "type": "messagebus", "label": "Apache Kafka", "sublabel": "notify-* and update-*", "pos": [980, 120], "size": [180, 64], "sources": [{ "path": "compose.yaml", "line": 39, "label": "Compose broker" }] },
+    { "id": "notification", "type": "backend", "label": "Notification service", "sublabel": "Delivery worker", "pos": [980, 320], "size": [180, 64], "sources": [{ "path": "compose.yaml", "line": 163, "label": "Compose service" }] },
+    { "id": "gmail", "type": "external", "label": "Gmail", "sublabel": "Email delivery", "pos": [1190, 320], "size": [150, 64], "sources": [{ "path": "compose.yaml", "line": 173, "label": "Notification configuration" }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Local Docker Compose workspace", "wraps": ["user", "history", "postgres", "mongodb", "jobs", "kafka", "notification"] }
+  ],
+  "connections": [
+    { "id": "reader-frontend", "from": "reader", "to": "frontend", "label": "HTTP", "variant": "emphasis" },
+    { "id": "frontend-user", "from": "frontend", "to": "user", "label": "server-side HTTP", "variant": "security", "labelAt": [395, 270] },
+    { "id": "frontend-history", "from": "frontend", "to": "history", "label": "server-side HTTP", "variant": "security", "labelAt": [395, 410] },
+    { "id": "user-postgres", "from": "user", "to": "postgres", "label": "SQL" },
+    { "id": "history-mongodb", "from": "history", "to": "mongodb", "label": "document storage", "labelAt": [600, 410] },
+    { "id": "history-gemini", "from": "history", "to": "gemini", "label": "generate story", "variant": "dashed", "labelAt": [500, 415] },
+    { "id": "jobs-kafka", "from": "jobs", "to": "kafka", "label": "publish notify-*", "variant": "emphasis", "labelDy": 56 },
+    { "id": "kafka-notification", "from": "kafka", "to": "notification", "label": "consume notify-*", "variant": "emphasis", "labelAt": [1070, 210] },
+    { "id": "notification-gmail", "from": "notification", "to": "gmail", "label": "send email", "variant": "dashed", "labelAt": [1175, 410] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Reader path", "items": ["The standalone Frontend uses server-side routes for User and History.", "User persists account data in PostgreSQL; History persists stories in MongoDB."] },
+    { "dot": "violet", "title": "Asynchronous path", "items": ["Jobs reads PostgreSQL outbox data and publishes notify-* work to Kafka.", "Notification consumes it, calls History with the job token when needed, and publishes update-* outcomes for Jobs."] },
+    { "dot": "amber", "title": "Local configuration", "items": ["Frontend and History share the frontend token value.", "Compose-only URLs use service DNS; standalone applications use localhost ports."] }
+  ]
+}
