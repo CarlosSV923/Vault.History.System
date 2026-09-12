@@ -82,8 +82,8 @@ services:
 
   user:
     build:
-      context: ./services/user
-      dockerfile: ../../docker/user.Dockerfile
+      context: ../VaultHistory.Microservice.User
+      dockerfile: ../Vault.History.System/docker/user.Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Local
       ASPNETCORE_URLS: http://+:8080
@@ -106,8 +106,8 @@ services:
 
   history:
     build:
-      context: ./services/history
-      dockerfile: ../../docker/history.Dockerfile
+      context: ../VaultHistory.Microservice.History
+      dockerfile: ../Vault.History.System/docker/history.Dockerfile
     environment:
       NODE_ENV: docker
       PORT: 3000
@@ -135,8 +135,8 @@ services:
 
   jobs:
     build:
-      context: ./services/jobs
-      dockerfile: ../../docker/jobs.Dockerfile
+      context: ../VaultHistory.Microservice.Jobs
+      dockerfile: ../Vault.History.System/docker/jobs.Dockerfile
     environment:
       NODE_ENV: docker
       PORT: 3000
@@ -162,8 +162,8 @@ services:
 
   notification:
     build:
-      context: ./services/notification
-      dockerfile: ../../docker/notification.Dockerfile
+      context: ../VaultHistory.Microservice.Notification
+      dockerfile: ../Vault.History.System/docker/notification.Dockerfile
     environment:
       DOTNET_ENVIRONMENT: Local
       Kafka__BootstrapServers: kafka:9092
