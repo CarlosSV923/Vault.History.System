@@ -1,23 +1,24 @@
 # Vault History System
 
-Vault History System is the integration and architecture repository for the Vault History portfolio backend. It documents how the independently maintained services, data stores, message broker, and external providers fit together.
+Vault History System is a local portfolio workspace for the Vault History backend. This repository owns the Docker Compose topology, shared Dockerfiles, configuration examples, and architecture documentation. It is designed for local execution, not production deployment.
 
-This repository deliberately contains **no service source code, submodules, or `services/` directory**. The service repositories are connected only through the links in this document. That separation keeps ownership, tests, releases, and source history with each service.
+The service repositories are **not** Git submodules and this repository has no `services/` directory. Docker Compose builds the backend from sibling checkouts with the exact names shown below.
 
 ## Architecture
 
-![Vault History backend architecture showing the User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, Gemini, and Gmail relationships.](docs/architecture/backend-architecture.png)
+![Vault History backend architecture showing the Frontend, User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, Gemini, and Gmail relationships.](https://raw.githubusercontent.com/CarlosSV923/Vault.History.System/develop/docs/architecture/backend-architecture.png)
 
-The diagram is a static export of the versioned architecture source. Explore the [interactive diagram](docs/architecture/backend-architecture.html) or inspect its [editable JSON source](docs/architecture/backend-architecture.json) for labels, relationships, and focused views.
+The image uses GitHub's raw-content URL so that it renders reliably in the repository README. Explore the [interactive diagram](docs/architecture/backend-architecture.html) or inspect its [editable JSON source](docs/architecture/backend-architecture.json) for labels, relationships, and focused views.
 
 The backend topology is:
 
-1. The portfolio client calls **User** over HTTPS for accounts and authentication.
+1. The **Frontend** calls **User** over HTTPS for accounts and authentication, and calls History through server-side routes.
 2. **User** stores account and outbox data in **PostgreSQL**. **History** stores generated stories in **MongoDB** and asks **Google Gemini** to generate a story only when requested.
 3. **Jobs** publishes notification work to **Apache Kafka**. **Notification** consumes that work, obtains subscription stories from History when needed, sends email through the **Gmail API**, and publishes correlated outcomes.
 
 | Component | Responsibility | Primary integration |
 | --- | --- | --- |
+| Frontend | Next.js visitor, account, library, and subscription experience | Server-side routes to User and History |
 | User | Accounts, authentication, preferences, and transactional outbox | PostgreSQL and Kafka-oriented outbox processing |
 | History | Story generation and persistence | MongoDB and Google Gemini |
 | Jobs | Scheduled selection, outbox processing, and result coordination | PostgreSQL and Apache Kafka |
@@ -26,52 +27,115 @@ The backend topology is:
 | MongoDB | Generated-story data | History |
 | Apache Kafka | Asynchronous notification contracts | Jobs and Notification |
 
-The frontend is not part of this repository or its Compose topology.
+The Frontend is part of the portfolio workspace, but it is not started by the backend Compose file.
 
-## Service repositories
+## Repositories
 
-Clone, build, test, and release each service in its own repository. This is the only source-level connection from this repository to those projects.
+Each project keeps its own source code, tests, and Git history. Clone all of them into one parent directory with the exact names below.
 
-| Service | Repository |
-| --- | --- |
-| User | [CarlosSV923/VaultHistory.Microservice.User](https://github.com/CarlosSV923/VaultHistory.Microservice.User) |
-| Jobs | [CarlosSV923/VaultHistory.Microservice.Jobs](https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs) |
-| History | [CarlosSV923/VaultHistory.Microservice.History](https://github.com/CarlosSV923/VaultHistory.Microservice.History) |
-| Notification | [CarlosSV923/VaultHistory.Microservice.Notification](https://github.com/CarlosSV923/VaultHistory.Microservice.Notification) |
+| Project | Repository | Local directory |
+| --- | --- | --- |
+| Orchestration | [CarlosSV923/Vault.History.System](https://github.com/CarlosSV923/Vault.History.System) | `Vault.History.System` |
+| Frontend | [CarlosSV923/VaultHistory.Frontend.Museum](https://github.com/CarlosSV923/VaultHistory.Frontend.Museum) | `VaultHistory.Frontend.Museum` |
+| User | [CarlosSV923/VaultHistory.Microservice.User](https://github.com/CarlosSV923/VaultHistory.Microservice.User) | `VaultHistory.Microservice.User` |
+| Jobs | [CarlosSV923/VaultHistory.Microservice.Jobs](https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs) | `VaultHistory.Microservice.Jobs` |
+| History | [CarlosSV923/VaultHistory.Microservice.History](https://github.com/CarlosSV923/VaultHistory.Microservice.History) | `VaultHistory.Microservice.History` |
+| Notification | [CarlosSV923/VaultHistory.Microservice.Notification](https://github.com/CarlosSV923/VaultHistory.Microservice.Notification) | `VaultHistory.Microservice.Notification` |
 
-Work is planned in the [Portfolio Vault History System GitHub Project](https://github.com/users/CarlosSV923/projects/3). The original orchestration task is [HU-12](https://github.com/CarlosSV923/Vault.History.System/issues/1); its follow-up improvements remain tracked in [HU-26](https://github.com/CarlosSV923/Vault.History.System/issues/12).
+Work is planned in the [Portfolio Vault History System GitHub Project](https://github.com/users/CarlosSV923/projects/3).
 
-## Compose topology and current limitation
+## Required local workspace layout
 
-`compose.yaml` and the Dockerfiles preserve the documented backend topology: User, History, Jobs, Notification, PostgreSQL, MongoDB, Kafka, and the idempotent `kafka-init` topic initializer. Docker service names provide internal DNS; the workers use `kafka:9092`, and Notification reaches History at `http://history:3000`.
+All repositories must be siblings in the same parent directory. This is required because the Compose build contexts use the relative paths `../VaultHistory.Microservice.*`.
 
-Because this repository no longer vendors service source trees, a clean checkout does **not** contain the build contexts referenced by `compose.yaml`. Consequently, `docker compose up --build` is not a runnable full-stack command from this repository alone. Do not mistake the retained Compose configuration for a production-validated deployment. Restoring a reproducible, runnable orchestration without reintroducing service source directories is an explicit future integration decision, not part of this documentation change.
-
-You can still inspect the resolved configuration without starting containers:
-
-```bash
-docker compose config --quiet
+```text
+vault-history-local/
+├── Vault.History.System/
+├── VaultHistory.Frontend.Museum/
+├── VaultHistory.Microservice.User/
+├── VaultHistory.Microservice.Jobs/
+├── VaultHistory.Microservice.History/
+└── VaultHistory.Microservice.Notification/
 ```
 
-If you have a separately prepared local integration workspace, the retained operational commands are:
+Do not place the service repositories inside `Vault.History.System`, do not rename their directories, and do not add them as Git submodules. A different layout makes `docker compose up --build` fail because Docker cannot resolve its build contexts.
+
+### Clone the complete local workspace
+
+From Git Bash, macOS, or Linux, run:
 
 ```bash
-docker compose ps
-docker compose logs --tail 100 user history jobs notification kafka-init
-docker compose down
+mkdir vault-history-local
+cd vault-history-local
+
+git clone https://github.com/CarlosSV923/Vault.History.System.git Vault.History.System
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Frontend.Museum.git VaultHistory.Frontend.Museum
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.User.git VaultHistory.Microservice.User
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs.git VaultHistory.Microservice.Jobs
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.History.git VaultHistory.Microservice.History
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.Notification.git VaultHistory.Microservice.Notification
+
+cd Vault.History.System
 ```
 
-Do not run `docker compose down --volumes` unless you intentionally want to remove local PostgreSQL, MongoDB, and Kafka data.
+For PowerShell:
 
-## Configuration
+```powershell
+New-Item -ItemType Directory -Force vault-history-local | Out-Null
+Set-Location vault-history-local
 
-Copy the example file only in an integration workspace that supplies compatible service build contexts:
+git clone https://github.com/CarlosSV923/Vault.History.System.git Vault.History.System
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Frontend.Museum.git VaultHistory.Frontend.Museum
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.User.git VaultHistory.Microservice.User
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs.git VaultHistory.Microservice.Jobs
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.History.git VaultHistory.Microservice.History
+git clone --branch develop https://github.com/CarlosSV923/VaultHistory.Microservice.Notification.git VaultHistory.Microservice.Notification
+
+Set-Location Vault.History.System
+```
+
+The repositories are intentionally cloned independently. Before running Compose, use `git status` in each one if you need to confirm the local sources match the revisions you intend to demonstrate.
+
+## Run the backend locally
+
+### Prerequisites
+
+- Git.
+- Docker Desktop with Docker Compose.
+- Approximately 6 GB of available memory for the backend services and infrastructure.
+
+Create local configuration from the example:
 
 ```bash
 cp .env.example .env
 ```
 
-The example declares local-only values for PostgreSQL, MongoDB, JWT signing, the internal History token, and anonymous-generation settings. `AUTH_TOKEN_FORNT` is the existing History configuration key; `ANONYMOUS_DAILY_LIMIT` defaults to `3`.
+Then build and start the complete backend from `Vault.History.System`:
+
+```bash
+docker compose up --build -d
+```
+
+Check status and logs:
+
+```bash
+docker compose ps
+docker compose logs --tail 100 user history jobs notification kafka-init
+```
+
+Stop the environment:
+
+```bash
+docker compose down
+```
+
+Do not run `docker compose down --volumes` unless you intentionally want to remove local PostgreSQL, MongoDB, and Kafka data.
+
+## Compose topology and configuration
+
+`compose.yaml` builds User, History, Jobs, and Notification from their sibling repositories with the Dockerfiles stored in this repository. It also starts PostgreSQL, MongoDB, Kafka, and the idempotent `kafka-init` topic initializer. Docker service names provide internal DNS; workers use `kafka:9092`, and Notification reaches History at `http://history:3000`.
+
+The example configuration declares local-only values for PostgreSQL, MongoDB, JWT signing, the internal History token, and anonymous-generation settings. `AUTH_TOKEN_FORNT` is the existing History configuration key; `ANONYMOUS_DAILY_LIMIT` defaults to `3`.
 
 Google settings are placeholders so containers can start before a real story or email is processed. Set `GOOGLE_API_KEY` only for Gemini-backed generation, and set the Gmail client, sender, and refresh-token variables only for real delivery. Keep `.env` out of Git and never publish `docker compose config` output created with real secrets, because Compose expands them.
 
@@ -88,11 +152,7 @@ For registration, User records a `CreateUserEvent` in its outbox, Jobs publishes
 
 PostgreSQL notification checkpoints allow History-message retries to reuse a generated story and a confirmed-email stage before a Kafka result is republished. The documented design is at-least-once around external email delivery; it does not claim an end-to-end exactly-once guarantee.
 
-Anonymous generation is configured through History's fixed frontend token and daily limit. The quota behavior that relies on an IP supplied in the request body is documented as the currently integrated service behavior; the hardened visitor-attribution work is tracked separately and must not be inferred from this repository.
-
 ## Local ports and diagnostics
-
-When the Compose stack is supplied with valid service sources, these host ports are configured:
 
 | Service | Address |
 | --- | --- |
@@ -135,10 +195,8 @@ Vault.History.System/
 └── .env.example
 ```
 
-There is no `services/` directory and no Git submodule configuration. The Dockerfiles and Compose file belong to this orchestration repository; service implementation, tests, and specialized documentation remain in the linked repositories.
+There is no `services/` directory and no Git submodule configuration. Source code remains in the sibling repositories listed above.
 
 ## Verification and scope
 
-This repository has no application test suite. For this documentation, verify relative links against the files above, run `docker compose config --quiet` only as configuration validation, and visually inspect the rendered README and architecture image on GitHub.
-
-This documentation does not change application behavior, service contracts, secrets, Docker infrastructure, provider credentials, or functional validation. In particular, it does not close HU-26, replace the independent HU-20 functional validation, or present pending work as implemented.
+Run `docker compose config --quiet` to validate the Compose configuration before a build. The Docker Compose environment is intentionally for local portfolio demonstrations; it is not a production deployment guide.
