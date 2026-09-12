@@ -1,8 +1,6 @@
 # Vault History System
 
-Vault History System is a local portfolio workspace for the Vault History backend. This repository owns the Docker Compose topology, shared Dockerfiles, configuration examples, and architecture documentation. It is designed for local execution, not production deployment.
-
-The service repositories are **not** Git submodules and this repository has no `services/` directory. Docker Compose builds the backend from sibling checkouts with the exact names shown below.
+Vault History System is a local portfolio workspace for Vault History. This repository owns the Docker Compose topology, shared Dockerfiles, configuration examples, and architecture documentation. It is designed for local execution, not production deployment.
 
 ## Architecture
 
@@ -27,7 +25,7 @@ The backend topology is:
 | MongoDB | Generated-story data | History |
 | Apache Kafka | Asynchronous notification contracts | Jobs and Notification |
 
-The Frontend is part of the portfolio workspace, but it is not started by the backend Compose file.
+The Frontend is part of the portfolio workspace, but it is started separately from the backend Compose file.
 
 ## Repositories
 
@@ -35,14 +33,14 @@ Each project keeps its own source code, tests, and Git history. Clone all of the
 
 | Project | Repository | Local directory |
 | --- | --- | --- |
-| Orchestration | [CarlosSV923/Vault.History.System](https://github.com/CarlosSV923/Vault.History.System) | `Vault.History.System` |
-| Frontend | [CarlosSV923/VaultHistory.Frontend.Museum](https://github.com/CarlosSV923/VaultHistory.Frontend.Museum) | `VaultHistory.Frontend.Museum` |
-| User | [CarlosSV923/VaultHistory.Microservice.User](https://github.com/CarlosSV923/VaultHistory.Microservice.User) | `VaultHistory.Microservice.User` |
-| Jobs | [CarlosSV923/VaultHistory.Microservice.Jobs](https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs) | `VaultHistory.Microservice.Jobs` |
-| History | [CarlosSV923/VaultHistory.Microservice.History](https://github.com/CarlosSV923/VaultHistory.Microservice.History) | `VaultHistory.Microservice.History` |
-| Notification | [CarlosSV923/VaultHistory.Microservice.Notification](https://github.com/CarlosSV923/VaultHistory.Microservice.Notification) | `VaultHistory.Microservice.Notification` |
+| Orchestration | <a href="https://github.com/CarlosSV923/Vault.History.System" target="_blank" rel="noopener noreferrer">CarlosSV923/Vault.History.System</a> | `Vault.History.System` |
+| Frontend | <a href="https://github.com/CarlosSV923/VaultHistory.Frontend.Museum" target="_blank" rel="noopener noreferrer">CarlosSV923/VaultHistory.Frontend.Museum</a> | `VaultHistory.Frontend.Museum` |
+| User | <a href="https://github.com/CarlosSV923/VaultHistory.Microservice.User" target="_blank" rel="noopener noreferrer">CarlosSV923/VaultHistory.Microservice.User</a> | `VaultHistory.Microservice.User` |
+| Jobs | <a href="https://github.com/CarlosSV923/VaultHistory.Microservice.Jobs" target="_blank" rel="noopener noreferrer">CarlosSV923/VaultHistory.Microservice.Jobs</a> | `VaultHistory.Microservice.Jobs` |
+| History | <a href="https://github.com/CarlosSV923/VaultHistory.Microservice.History" target="_blank" rel="noopener noreferrer">CarlosSV923/VaultHistory.Microservice.History</a> | `VaultHistory.Microservice.History` |
+| Notification | <a href="https://github.com/CarlosSV923/VaultHistory.Microservice.Notification" target="_blank" rel="noopener noreferrer">CarlosSV923/VaultHistory.Microservice.Notification</a> | `VaultHistory.Microservice.Notification` |
 
-Work is planned in the [Portfolio Vault History System GitHub Project](https://github.com/users/CarlosSV923/projects/3).
+Work is planned in the <a href="https://github.com/users/CarlosSV923/projects/3" target="_blank" rel="noopener noreferrer">Portfolio Vault History System GitHub Project</a>.
 
 ## Required local workspace layout
 
@@ -58,7 +56,7 @@ vault-history-local/
 └── VaultHistory.Microservice.Notification/
 ```
 
-Do not place the service repositories inside `Vault.History.System`, do not rename their directories, and do not add them as Git submodules. A different layout makes `docker compose up --build` fail because Docker cannot resolve its build contexts.
+Do not place the service repositories inside `Vault.History.System` and do not rename their directories. A different layout makes `docker compose up --build` fail because Docker cannot resolve its build contexts.
 
 ### Clone the complete local workspace
 
@@ -131,6 +129,66 @@ docker compose down
 
 Do not run `docker compose down --volumes` unless you intentionally want to remove local PostgreSQL, MongoDB, and Kafka data.
 
+## Run the Frontend separately
+
+The Docker Compose file starts the backend only. Start the Next.js Frontend from its own sibling repository after the User and History containers are healthy; otherwise the Frontend's server-side routes cannot reach their APIs.
+
+Run the workspace in this order:
+
+1. Clone the complete workspace and open `Vault.History.System`.
+2. Create `.env` and run `docker compose up --build -d`.
+3. Wait for User and History to report healthy with `docker compose ps`.
+4. Open `VaultHistory.Frontend.Museum`, install its dependencies, create `.env.local`, and start Next.js.
+5. Open `http://localhost:3000` in a browser.
+
+From `Vault.History.System`, start the backend and wait for its APIs:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+docker compose ps
+```
+
+Then, from the Frontend repository, run:
+
+```bash
+cd ../VaultHistory.Frontend.Museum
+corepack enable
+pnpm install --frozen-lockfile
+cp .env.example .env.local
+pnpm dev
+```
+
+Set these values in `VaultHistory.Frontend.Museum/.env.local` for the local Compose environment:
+
+```dotenv
+USER_API_URL=http://localhost:5000
+HISTORY_API_URL=http://localhost:3001
+HISTORY_FRONTEND_TOKEN=local-history-frontend-token
+```
+
+The URLs and token are consumed only by the Frontend's server-side routes. Do not rename them with a `NEXT_PUBLIC_` prefix and do not expose the token in browser code.
+
+## Product walkthrough
+
+The following local screenshots show the visitor landing page, anonymous story generation, and the signed-in library experience.
+
+### Visitor landing page
+
+![Vault History visitor landing page with navigation for exploring stories, the library, profile, subscription, sign-in, and account creation.](docs/pictures/Anonymous-init-page.png)
+
+### Anonymous story generation
+
+![Vault History anonymous story workspace showing topic and character inputs and visitor stories with the remaining daily quota.](docs/pictures/Anonymous-Interface-histories.png)
+
+### Account creation
+
+![Vault History account creation form populated with demonstration data.](docs/pictures/create-account-page.png)
+
+### Personal library
+
+![Vault History personal library showing story creation, filters, an authenticated story, and the remove action.](docs/pictures/user-histories-page.png)
+
 ## Compose topology and configuration
 
 `compose.yaml` builds User, History, Jobs, and Notification from their sibling repositories with the Dockerfiles stored in this repository. It also starts PostgreSQL, MongoDB, Kafka, and the idempotent `kafka-init` topic initializer. Docker service names provide internal DNS; workers use `kafka:9092`, and Notification reaches History at `http://history:3000`.
@@ -195,7 +253,7 @@ Vault.History.System/
 └── .env.example
 ```
 
-There is no `services/` directory and no Git submodule configuration. Source code remains in the sibling repositories listed above.
+Source code lives in the sibling repositories listed above.
 
 ## Verification and scope
 
