@@ -222,6 +222,24 @@ For registration, User records a `CreateUserEvent` in its outbox, Jobs publishes
 
 PostgreSQL notification checkpoints allow History-message retries to reuse a generated story and a confirmed-email stage before a Kafka result is republished. The documented design is at-least-once around external email delivery; it does not claim an end-to-end exactly-once guarantee.
 
+## Deferred improvements and known limitations
+
+Vault History is intentionally a local, portfolio-focused system. The following items describe observed limitations and future work; they are not implemented capabilities or a production-readiness claim.
+
+- **Production deployment profile.** The current Compose setup is for local development: it publishes data-store and Kafka ports, uses local configuration, and supplies development fallbacks. A future small-server profile should place public Frontend and API traffic behind an HTTPS proxy, keep data stores and the subscription endpoint internal, require secrets without local fallbacks, and define PostgreSQL/MongoDB backup and restore procedures. A single-server deployment would remain an accepted constraint for demonstrations, not a validated public deployment.
+
+- **Authentication, generation, and email limits.** Anonymous History generation currently has a configurable daily IP quota, but explicit authentication throttling, per-user daily generation limits, generation-length and concurrency limits, and budget-based provider limits remain future work. Login can create email work, so any future limit design must account for that path. The portfolio also needs a deliberate choice between controlled or invitation-only demonstration accounts and open registration with email verification; neither email verification nor a general rate-limiting policy is claimed here.
+
+- **Outbox email deduplication.** History-message retries already use checkpoints, but comparable protection for `HandleOutboxAsync` keyed by `outboxId` remains pending. Without it, a Gmail acceptance followed by a failed result publication can lead to a repeated email. A checkpoint would reduce that risk but cannot remove the window between Gmail acceptance and durable state, so exactly-once delivery is not promised. This work is related to the uncertain-result reconciliation tracked by [HU-23](https://github.com/CarlosSV923/Vault.History.System/issues/9).
+
+- **Session revocation for deactivated accounts.** Login rejects inactive accounts, but a previously issued JWT is not automatically revoked by a password change or account deactivation, and History validates the token without consulting account activity. A future policy must choose short-lived tokens with an accepted exposure window or state/version validation for immediate revocation. The existing Frontend should also define its sign-out and expiry behavior; refresh tokens are not an automatic requirement.
+
+- **Dependency diagnostics and provider resilience.** User health and History port checks do not yet prove that all dependencies are usable. Future work should add dependency-aware health checks, inspect cron results, correlate HTTP, outbox, and Kafka activity, and expose minimum signals for pending or stuck work, errors, and last successful execution. Gemini needs an explicit timeout and failure-class-specific retries rather than treating every provider failure alike; complete metrics and health coverage are not currently claimed.
+
+- **End-to-end automation and demonstration readiness.** Service-level tests exist, but some integration paths use Prisma or Kafka substitutes, and release automation alone is not a build-and-test pipeline. Future work includes an automated environment with PostgreSQL, MongoDB, and Kafka, simulated Google providers, restart scenarios, a validation pipeline, controlled birthday-triggered demonstrations, and an updated operator guide. This documentation does not certify real Gmail delivery or real Gemini generation.
+
+The selected implementation backlog remains [HU-22](https://github.com/CarlosSV923/Vault.History.System/issues/8), [HU-23](https://github.com/CarlosSV923/Vault.History.System/issues/9), [HU-24](https://github.com/CarlosSV923/Vault.History.System/issues/10), and [HU-25](https://github.com/CarlosSV923/Vault.History.System/issues/11). HU-20 — General functional testing remains an independent functional-validation task; documenting these limitations neither cancels it nor turns a complete CI pipeline into its requirement. Work is tracked in the [Portfolio Vault History System GitHub Project](https://github.com/users/CarlosSV923/projects/3).
+
 ## Local ports and diagnostics
 
 | Service | Address |
@@ -259,9 +277,9 @@ Vault.History.System/
 │   └── notification.Dockerfile
 ├── docs/
 │   └── architecture/
+│       ├── backend-architecture.archify.json
 │       ├── backend-architecture.png
 │       ├── backend-architecture.html
-│       └── backend-architecture.json
 └── .env.example
 ```
 
